@@ -1,3 +1,5 @@
+.DS_Store
+
 # Compiled Object files
 *.slo
 *.lo
@@ -15,7 +17,6 @@
 
 # Fortran module files
 *.mod
-*.smod
 
 # Compiled Static libraries
 *.lai
@@ -27,3 +28,27 @@
 *.exe
 *.out
 *.app
+
+*.m~
+*.avi
+*.mp4
+
+.tags*
+
+gridgen
+veritas
+flagged.txt
+rectangles_*.txt
+rectangleData_*.txt
+Efield.txt
+Control.txt
+error.log
+
+gridgeneration/build/*
+!gridgeneration/build/Modules
+build/*
+!build/Modules
+bin/output/
+bin/run.log
+
+docs/_build
