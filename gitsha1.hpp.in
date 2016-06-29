@@ -1,0 +1,6 @@
+#ifndef __gitsha1_hpp__
+#define __gitsha1_hpp__
+
+#define GIT_SHA1 "@GIT_SHA1@"
+
+#endif /* __gitsha1_hpp__ */
