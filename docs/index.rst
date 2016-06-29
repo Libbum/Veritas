@@ -1,9 +1,6 @@
 Veritas Quick Start Guide
 =========================
 
-.. toctree::
-   :maxdepth: 2
-
 Veritas is an efficient tool for continuum Vlasov-Maxwell simulations.
 Implemented in modern c++14, using state of the art numerical schemes for maximal accuracy and an adaptive mesh to minimise memory and runtime requirements.
 
@@ -19,6 +16,20 @@ We have extensively tested *GCC* and *Intel* compilers.
 
 Configuration and compilation is aided by *CMake*.
 Building Veritas is possible on Linux, OSX and Windows; however most testing has been performed on Linux (and to a lesser extent OSX).
+
+
+Obtaining the Source Code
+-------------------------
+
+You may clone the latest build from the Veritas git repository via the command line ::
+
+   $ git clone https://github.com/Libbum/Veritas.git .
+
+or if you have your ssh keys configured with github::
+
+   $ git clone git@github.com:Libbum/Veritas.git .
+
+If you prefer a stable version of the code, release archives can be found `here <https://github.com/Libbum/Veritas/releases>`_, which can be extracted and used in a similar manner as the cloned repository data.
 
 Installation
 ------------
@@ -62,7 +73,7 @@ Usage
 
 TODO: Running a Job
 
-TODO: Customising ``veritas.cpp`` 
+TODO: Customising ``veritas.cpp``
 
 Contribute
 ----------
