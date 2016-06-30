@@ -15,9 +15,10 @@ We highly recommend using the *Intel MKL* library as other performance optimisat
 
 A c++14 aware compiler is also needed.
 This means older complier versions will have issues with the codebase.
+For example, current Ubuntu installations have GCC v4.8, whereas Veritas requires a minimum version of 4.9.
 We have extensively tested *GCC* and *Intel* compilers.
 
-Configuration and compilation is aided by *CMake*.
+Configuration and compilation is aided by *CMake* (with a minimum version of 3.1).
 Building Veritas is possible on Linux, OSX and Windows; however most testing has been performed on Linux (and to a lesser extent OSX).
 
 
