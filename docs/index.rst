@@ -159,6 +159,27 @@ Control of the shape and location of the initial plasma slab.
 
 Here, you can alter time step, total experiment time and output frequency of the run as well as the adaptive mesh update frequency.
 
+Advanced Optimisations
+----------------------
+
+Both the initialisation of the distribution function and flagging of the initial adaptive grid are costly procedures.
+These operations can be enhanced dramatically by allowing the *MKL* library to do the heavy lifting.
+This option is turned off by default as some portions of the implementation is not easy to refactor into one place.
+
+To enable this option, change the 
+
+.. code-blck:: c++
+
+    #define MKLINIT 0
+
+value in ``veritas.hpp`` to ``1``.
+This will work straight out of the box, so long as ``settings.plasma_xl_bound`` and ``settings.plasma_xr_bound`` are the left and right extents of your plasma in the spatial direction, 
+and your distribution in the momentum direction is maxwellian (which is true for the example case).
+
+Ultimately, *MKL* is using a vectorised approach to calculate the exponential portion of the maxwellian: -p*p/(2*Temperature).
+If your distribution function is not formulated in this manner you may not need this optimisation, or you will be required to alter a few regions of code manually.
+``Mesh::getError()`` in ``Mesh.cpp`` and ``Rechtangle::InitializeDistribution()`` in ``Rectangle.cpp`` should both be checked for validity in this case.
+
 Contribute
 ----------
 
