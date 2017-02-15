@@ -5,26 +5,6 @@
 #include "Rectangle.hpp"
 #include "BoundaryCondition.hpp"
 
-//Override std::ostream for coordinates
-std::ostream & operator<<(std::ostream& o, const coords& p) {
-    return o << "(" << p.first << ", " << p.second << ")";
-}
-
-//Override std::ostream for rectangles
-std::ostream& operator<<(std::ostream& o, const rect& r) {
-    return o << r.first.first << " " << r.first.second << " " << r.second.first << " " << r.second.second;
-}
-
-//Override std::ostream for rectangle data
-std::ostream& operator<<(std::ostream& o, const rectData& data) {
-    int one = std::get<0>(data), two = std::get<1>(data);
-    double three = std::get<2>(data);
-    std::stringstream output;
-
-    output << one << " " << two << " " << std::scientific << three;
-    return o << output.str();
-}
-
 Mesh::Mesh(int particleType, Settings &settings) : settings(settings), EMSolver(NULL), particleType(particleType) {
     bc = std::make_shared<BoundaryCondition>();
     std::vector<coords> flaggedCells;
@@ -55,7 +35,6 @@ Mesh::Mesh(int particleType, Settings &settings) : settings(settings), EMSolver(
             extrema = std::make_pair(std::make_pair(0, 0), std::make_pair(xmax, pmax));
 
             identified.push_back(extrema);
-            loadBalanceRectangles(identified);
             hierarchy.push_back(identified);
 
             getError(l, true, flaggedCells); //Flag for new level.
@@ -83,7 +62,6 @@ void Mesh::InterpolateEnergyToFinestMesh(std::vector<double> &energy) {
 }
 
 void Mesh::Advance(double timeStep, int step) {
-
     for (int i = levels.size() - 1; i > -1; i--) {
         levels[i]->FCTTimeStep(timeStep, step,0);
     }
@@ -112,22 +90,22 @@ void Mesh::Advance(double timeStep, int step) {
 
 void Mesh::PushData(int val) {
 
-    levels.at(0)->PushData(1,val);
+    levels[0]->PushData(1,val);
 
     for (unsigned int i = 1; i < levels.size(); i++) {
-        levels.at(i)->PushData(0,val);
-        levels.at(i)->PushData(1,val);
+        levels[i]->PushData(0,val);
+        levels[i]->PushData(1,val);
     }
 
-    levels.at(levels.size() - 1)->PushData(3,val);
+    levels[levels.size() - 1]->PushData(3,val);
 
     for (unsigned int i = levels.size() - 1; i > 0; i--) {
-        levels.at(i - 1)->PushData(2,val);
+        levels[i - 1]->PushData(2,val);
     }
 
 }
 
-void Mesh::SetFieldSolver(EMFieldSolver *solver) {
+void Mesh::SetFieldSolver(const std::shared_ptr<EMFieldSolver> &solver) {
     EMSolver = solver;
 
     for (auto &lvl : levels) {
@@ -207,14 +185,12 @@ void Mesh::updateHierarchy(bool init) {
                 if (l < settings.maxDepth) {
                     //Need a new l+1 level.
                     interpRectanglesUp(identified, l);
-                    loadBalanceRectangles(identified);
                     hierarchy.push_back(identified);
 
                     if (LOUD) std::cout << "Constructed new level (" << settings.maxDepth - (l + 1) << ") in hierarchy. Rectangles: " << identified.size() << ", Flagged Cells: " << flaggedCells.size() << std::endl;
                 }
             } else {
                 interpRectanglesUp(identified, l);
-                loadBalanceRectangles(identified);
                 hierarchy.at(l + 1) = identified;
 
                 if (LOUD) std::cout << "Regridded level " << settings.maxDepth - (l + 1) << ". Rectangles: " << identified.size() << ", Flagged Cells: " << flaggedCells.size() << std::endl;
@@ -231,33 +207,6 @@ void Mesh::updateHierarchy(bool init) {
     }
 
     promoteHierarchyToMesh(init);
-}
-
-void Mesh::loadBalanceRectangles(level &identified) {
-    level rlevel;
-    coords left, right;
-    double length = settings.loadBalanceLength;
-    double minSize = std::pow(length, 2.0);
-
-    for (rect &r: identified) {
-        double size = (r.second.first - r.first.first) * (r.second.second - r.first.second);
-        int n_x = std::ceil((r.second.first - r.first.first) / length);
-        int n_p = std::ceil((r.second.second - r.first.second) / length);
-
-        if (size > minSize) {
-            for (int i = 0; i < n_x; i++) {
-                for (int j = 0; j < n_p; j++) {
-                    left = std::make_pair(r.first.first + i * (int)length, r.first.second + j * (int)length);
-                    right = std::make_pair(std::min(r.first.first + (i + 1) * (int)length, r.second.first.m), std::min(r.first.second + (j + 1) * (int)length, r.second.second.m));
-                    rlevel.push_back(std::make_pair(left, right));
-                }
-            }
-        } else {
-            rlevel.push_back(r);
-        }
-    }
-
-    identified = rlevel;
 }
 
 void Mesh::getError(const int &lvl, bool init, std::vector<coords> &flaggedCells) {
@@ -278,20 +227,65 @@ void Mesh::getError(const int &lvl, bool init, std::vector<coords> &flaggedCells
         int maxx = settings.GetXSize(settings.maxDepth - lvl) - offset;
         int maxp = settings.GetPSize(settings.maxDepth - lvl,  particleType) - offset;
         double dp = settings.GetDp(settings.maxDepth - lvl, particleType), dx = settings.GetDx(settings.maxDepth - lvl);
-        double temp, xp, pp, error;
+        double pmin = settings.pmin[particleType];
+        double tempp0 = settings.temp[particleType][0];
+        double tempp1 = settings.temp[particleType][1];
+        double ivals = maxx-offset;
+        double jvals = maxp-offset;
+        double plasma_xl_bound = settings.plasma_xl_bound;
+        double plasma_xr_bound = settings.plasma_xr_bound;
+
+#if MKLINIT == 1
+        std::vector<double> expinput;
+        std::vector<double> expoutput;
+        expinput.assign(3*jvals,0.0);
+        expoutput.assign(3*jvals,0.0);
+        for (int j = offset; j < maxp; j++) {
+            double pp = pmin + dp * (0.5 + j);
+            double ppn = pp - dp;
+            double ppp = pp + dp;
+            int k = j-offset;
+            expinput[3*k] = -(pp*pp)/(2.0*tempp1);
+            expinput[3*k+1] = -(ppn*ppn)/(2.0*tempp1);
+            expinput[3*k+2] = -(ppp*ppp)/(2.0*tempp1);
+        }
+        vdExp(jvals,&expinput[0],&expoutput[0]);
 
         for (int i = offset; i < maxx; i++) { //Don't allow new levels to have the same bounds (ensure nesting)
-            for (int j = offset; j < maxp; j++) {
-                xp = (0.5 + i) * dx;
-                pp = settings.pmin[particleType] + dp * (0.5 + j);
-                temp = settings.InitialDistribution(xp, pp, particleType);
-                error = errorWeights[0] * std::fabs(settings.InitialDistribution(xp + dx, pp, particleType) - settings.InitialDistribution(xp - dx, pp, particleType)) + errorWeights[1] * std::fabs(settings.InitialDistribution(xp, pp + dp, particleType) - settings.InitialDistribution(xp, pp - dp, particleType));
+            double error;
+            double xp = (0.5 + i) * dx;
+            double ne = getNe(xp,tempp0,plasma_xl_bound,plasma_xr_bound);
+            double nen = getNe(xp-dx,tempp0,plasma_xl_bound,plasma_xr_bound);
+            double nep = getNe(xp+dx,tempp0,plasma_xl_bound,plasma_xr_bound);
+
+            for (int j = 0; j < maxp-offset; j++) {
+                double expval = expoutput[3*j]/std::sqrt(DPI * tempp1);
+                double expnval = expoutput[3*j+1]/std::sqrt(DPI * tempp1);
+                double exppval = expoutput[3*j+2]/std::sqrt(DPI * tempp1);
+
+                error = errorWeights[0] * std::fabs(nep*expval - nen*expval) + errorWeights[1] * std::fabs(ne*exppval - ne*expnval);
 
                 if (error > settings.refinementCriteria) {
                     flaggedCells.push_back(std::make_pair(i, j));
                 }
             }
         }
+#else
+        std::vector<coords> flaggedPrivate;
+#pragma omp for schedule(static)
+        for (int i = offset; i < maxx; i++) { //Don't allow new levels to have the same bounds (ensure nesting)
+            double xp, pp, error;
+            for (int j = offset; j < maxp; j++) {
+                xp = (0.5 + i) * dx;
+                pp = settings.pmin[particleType] + dp * (0.5 + j);
+                error = errorWeights[0] * std::fabs(settings.InitialDistribution(xp + dx, pp, particleType) - settings.InitialDistribution(xp - dx, pp, particleType)) + errorWeights[1] * std::fabs(settings.InitialDistribution(xp, pp + dp, particleType) - settings.InitialDistribution(xp, pp - dp, particleType));
+
+                if (error > settings.refinementCriteria) {
+                    flaggedPrivate.push_back(std::make_pair(i, j));
+                }
+            }
+        }
+#endif
     } else {
         //We're advancing time, use current data on rectangles
         for (auto &r: levels.at(settings.maxDepth - lvl)->rectangles) {
@@ -299,6 +293,7 @@ void Mesh::getError(const int &lvl, bool init, std::vector<coords> &flaggedCells
         }
     }
 }
+
 
 void Mesh::interpRectanglesUp(level &identified, const int &lvl) {
     //Rectangle coords are on lvl but are actually needed on lvl+1. We need to re-index
@@ -308,12 +303,12 @@ void Mesh::interpRectanglesUp(level &identified, const int &lvl) {
     int pmax1 = settings.GetPSize(settings.maxDepth - (lvl + 1), particleType);
 
     for (rect &r: identified) {
-        r.second.first.m += 1;
-        r.second.second.m += 1;
-        r.first.first.m *= (nmax1 / double(nmax));
-        r.first.second.m *= (pmax1 / double(pmax));
-        r.second.first.m *= (nmax1 / double(nmax));
-        r.second.second.m *= (pmax1 / double(pmax));
+        r.second.first += 1;
+        r.second.second += 1;
+        r.first.first *= (nmax1 / double(nmax));
+        r.first.second *= (pmax1 / double(pmax));
+        r.second.first *= (nmax1 / double(nmax));
+        r.second.second *= (pmax1 / double(pmax));
     }
 }
 
@@ -358,7 +353,7 @@ int Mesh::sgn(int &x) {
 void Mesh::printRectangle(rect &r) {
     //Just prints a rectangle to screen. Usefull only for debugging. No newline so you can put multiple rectangles on one line.
     //Using this rather than the std::ostream override so we can print directly to file with that.
-    std::cout << "(" << r.first.first.m << ", " << r.first.second.m << ")->(" << r.second.first.m << ", " << r.second.second.m << ")";
+    std::cout << "(" << r.first.first << ", " << r.first.second << ")->(" << r.second.first << ", " << r.second.second << ")";
 }
 
 void Mesh::printRectangle(rect &r, int lvl) {
@@ -619,8 +614,8 @@ std::tuple<bool, int, int> Mesh::hasHole(std::vector<int> &sig) {
         //The job here is not to be optimal and identify ALL holes, just the one. We can cut this again later by calling a cut on the suboptimal second piece.
         //However, we can check to see if we have a longer hole length.
         it2 = find_if_not(it, sig.end(), [](int i) {
-            return i == 0;
-        });
+                return i == 0;
+                });
         //we may be cutting on the boundary, if so take the end of it..
         it2 == sig.end() ? finish = it2 - sig.begin() - 1 : finish = it2 - sig.begin();
     }
@@ -646,13 +641,6 @@ void Mesh::getExtrema(rect &extrema, const std::vector<coords> &flaggedCells) {
     }
 }
 
-void Mesh::saveRectangleData(std::ofstream &os, rect &rectangle, std::vector<rectData> &output) {
-    //rectangle bounds at top, followed by coords and data
-    os << "r " << rectangle << std::endl;
-    std::ostream_iterator<rectData> out(os, "\n");
-    copy(output.begin(), output.end(), out);
-}
-
 level Mesh::splitRectangle(rect &rectangle, std::vector<coords> &flagged, const double &minEfficiency) {
     double efficiencyRatio;
     std::vector<rect> resultRect;
@@ -667,7 +655,7 @@ level Mesh::splitRectangle(rect &rectangle, std::vector<coords> &flagged, const 
 
     if (efficiencyRatio > minEfficiency) {
         //We're done. Head back up the chain.
-        if (LOUD) std::cout << "RESULT: (" << rectangle.first.first.m << ", " << rectangle.first.second.m << "), (" << rectangle.second.first.m << ", " << rectangle.second.second.m << "): " << flagged.size() << std::endl;
+        if (LOUD) std::cout << "RESULT: (" << rectangle.first.first << ", " << rectangle.first.second << "), (" << rectangle.second.first << ", " << rectangle.second.second << "): " << flagged.size() << std::endl;
 
         resultRect.push_back(rectangle);
         return resultRect;
@@ -733,12 +721,12 @@ level Mesh::splitRectangle(rect &rectangle, std::vector<coords> &flagged, const 
             splitLocation = identifyInflection(rectangle, signatures);
 
             if (splitLocation.first == 0) {
-                if (LOUD) std::cout << "Cut X: " << splitLocation.second.m << std::endl;
+                if (LOUD) std::cout << "Cut X: " << splitLocation.second << std::endl;
 
                 pieceOne = std::make_pair(rectangle.first, coords(splitLocation.second, rectangle.second.second));                //left
                 pieceTwo = std::make_pair(coords(splitLocation.second + 1, rectangle.first.second), rectangle.second);            //right
             } else if (splitLocation.first == 1) {
-                if (LOUD) std::cout << "Cut P: " << splitLocation.second.m << std::endl;
+                if (LOUD) std::cout << "Cut P: " << splitLocation.second << std::endl;
 
                 pieceOne = std::make_pair(rectangle.first, coords(rectangle.second.first, splitLocation.second));                 //bottom
                 pieceTwo = std::make_pair(coords(rectangle.first.first, splitLocation.second + 1), rectangle.second);             //top
@@ -754,17 +742,17 @@ level Mesh::splitRectangle(rect &rectangle, std::vector<coords> &flagged, const 
                     pieceOne = std::make_pair(rectangle.first, coords(cutPosition, rectangle.second.second));                    //left
                     pieceTwo = std::make_pair(coords(cutPosition + 1, rectangle.first.second), rectangle.second);                //right
 
-                    if (LOUD) std::cout << "Bisect in x. Cut at " << cutPosition << ", L:" << lengthx << ", O:" << rectangle.first.first.m << ", T:" << rectangle.second.first.m << std::endl;
+                    if (LOUD) std::cout << "Bisect in x. Cut at " << cutPosition << ", L:" << lengthx << ", O:" << rectangle.first.first << ", T:" << rectangle.second.first << std::endl;
                 } else {
                     cutPosition = floor((lengthp / 2) + rectangle.first.second);
                     pieceOne = std::make_pair(rectangle.first, coords(rectangle.second.first, cutPosition));                     //bottom
                     pieceTwo = std::make_pair(coords(rectangle.first.first, cutPosition + 1), rectangle.second);                 //top
 
-                    if (LOUD) std::cout << "Bisect in p. Cut at " << cutPosition << ", L:" << lengthp << ", O:" << rectangle.first.second.m << ", T:" << rectangle.second.second.m << std::endl;
+                    if (LOUD) std::cout << "Bisect in p. Cut at " << cutPosition << ", L:" << lengthp << ", O:" << rectangle.first.second << ", T:" << rectangle.second.second << std::endl;
                 }
             } else {
                 //Can't cut, rectangle is too small. Head back up.
-                if (LOUD) std::cout << "RESULT: (" << rectangle.first.first.m << ", " << rectangle.first.second.m << "), (" << rectangle.second.first.m << ", " << rectangle.second.second.m << "): " << flagged.size() << std::endl;
+                if (LOUD) std::cout << "RESULT: (" << rectangle.first.first << ", " << rectangle.first.second << "), (" << rectangle.second.first << ", " << rectangle.second.second << "): " << flagged.size() << std::endl;
 
                 resultRect.push_back(rectangle);
                 return resultRect;
@@ -784,20 +772,6 @@ level Mesh::splitRectangle(rect &rectangle, std::vector<coords> &flagged, const 
         }
 
         if (LOUD || NOISY) std::cout << "Found in each piece: " << flaggedOne.size() << ", " << flaggedTwo.size() << std::endl;
-
-        if (NOISY) {
-            for (const coords &f: flaggedOne) {
-                std::cout << f << ", ";
-            }
-
-            std::cout << "\b\b  " << std::endl;
-
-            for (const coords &f: flaggedTwo) {
-                std::cout << f << ", ";
-            }
-
-            std::cout << "\b\b  " << std::endl;
-        }
 
         //So long as we still have flagged cells, we must go deeper.
         if (flaggedOne.size() > 0) {
@@ -855,12 +829,11 @@ void Mesh::promoteHierarchyToMesh(bool init) {
     }
 
     if (init) {
-       for (auto &lvl: levels) {
-           #pragma omp parallel for schedule(dynamic,1)
-           for (unsigned int i = 0; i < lvl->rectangles.size(); i++) {
-               lvl->rectangles[i]->InitializeDistribution();
-           }
-       }
+        for (auto &lvl: levels) {
+            for (unsigned int i = 0; i < lvl->rectangles.size(); i++) {
+                lvl->rectangles[i]->InitializeDistribution();
+            }
+        }
     }
 
     for (unsigned int l = 0; l < levels.size(); l++) {
@@ -885,15 +858,6 @@ void Mesh::promoteHierarchyToMesh(bool init) {
         }
     }
 
-    for (unsigned int l = 0; l < levels.size(); l++) {
-        auto &lvl = levels.at(l);
-        #pragma omp parallel for schedule(dynamic,1)
-        for (int i=0;i<lvl->rectangles.size();i++) {
-            if (init) lvl->rectangles[i]->InitializeDistribution();
-        }
-    }
-
-
     SetFieldSolver(EMSolver);
 
     if (!init) InterMeshDataTransfer(levels_n);
@@ -911,31 +875,28 @@ void Mesh::promoteHierarchyToMesh(bool init) {
 }
 
 void Mesh::outputRectangleData(double tidx) {
-    rect trect;
-    std::ofstream os;
-    std::vector<rectData> output;
+    //Limit I/0 to six threads max
+    int totalThreads = omp_get_num_threads();
+    int runThreads = (totalThreads <= 6) ? totalThreads : 6;
 
+#pragma omp parallel for num_threads(runThreads)
     for (int l = 0; l <= settings.maxDepth; l++) {
         if (!levels.at(l)->rectangles.empty()) {
+            std::ofstream *fileStream;
             std::stringstream fileName;
             fileName << "output/rectangleData/rectangleData_p" << particleType << "_l" << l << "_t" << std::scientific << tidx << ".txt";
-            os.open(fileName.str());
-
-            for (unsigned int r = 0; r < levels.at(l)->rectangles.size(); r++) {
-                auto &rectangle = levels.at(l)->rectangles.at(r);
-
+            fileStream = new std::ofstream(fileName.str());
+            (*fileStream) << std::setprecision(4); //Doesn't need much precision for output, but change if you want it.
+            for (unsigned int r = 0; r < levels[l]->rectangles.size(); r++) {
+                auto &rectangle = levels[l]->rectangles[r];
+                (*fileStream) << "r " << rectangle->x_pos << " " << rectangle->p_pos << " " << rectangle->n_x << " " << rectangle->n_p << "\n";
                 for (int i = 0; i < rectangle->n_x; i++) {
                     for (int j = 0; j < rectangle->n_p; j++) {
-                        output.push_back(std::make_tuple(rectangle->x_pos + i, rectangle->p_pos + j, rectangle->f[rectangle->Index3(i, j, 0)]));
+                        (*fileStream) << rectangle->x_pos+i << " " << rectangle->p_pos+j << " " << std::scientific << " " << rectangle->f[rectangle->Index3(i,j,0)] << "\n";
                     }
                 }
-
-                trect = std::make_pair(std::make_pair(rectangle->x_pos, rectangle->p_pos), std::make_pair(rectangle->n_x, rectangle->n_p));
-                saveRectangleData(os, trect, output);
-                output.clear();
             }
-
-            os.close();
+            delete fileStream;
         }
     }
 }

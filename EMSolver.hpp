@@ -18,6 +18,7 @@ class EMFieldSolver {
     std::vector<std::shared_ptr<Mesh>> meshes;
     std::vector<std::unique_ptr<std::ofstream>> energyStreams;
     std::ofstream *chargeStream, *ELongStream, *ETransStream, *potentialStream, *BStream, *AsqStream, *timeStream;
+    std::ofstream *runtimeStream;
     std::vector<double> charge, J, By, Bz, Ey, Ez, Ay, Az, a_squared, neutralizationCharge;
     std::vector<std::vector<double>> charges, energies;
     double *PHI, *pM, fieldCoef, Ex0;
@@ -43,13 +44,23 @@ public:
     inline int Index(int i, int step);
     void InterpolateToFaces();
     void EnforceChargeNeutralization();
-    __attribute__((vector, nothrow)) double GetCellAverageASquared(int i);
+    inline double GetCellAverageASquared(int i);
     double EstimateCFLBound();
     double GetMagneticForce(int i);
 };
 
 inline int EMFieldSolver::Index(int i, int step) {
     return step * (x_size + n_prepad + n_postpad) + i;
+}
+
+
+inline double EMFieldSolver::GetCellAverageASquared(int i) {
+    i += n_prepad;
+    i = i > -1 ? i : 0;
+    i = i < ((int)x_size + n_prepad + n_postpad) ? i : ((int)x_size + n_prepad + n_postpad - 1);
+    double ay = Ay[Index(i, 1)], az = Az[Index(i, 1)];
+
+    return (ay * ay) + (az * az);
 }
 
 #endif /* __EMSolver_hpp__ */

@@ -13,7 +13,7 @@ SolverManager::SolverManager(Settings &settings) : settings(settings) {
         meshes.push_back(std::make_shared<Mesh>(i, settings));
     }
 
-    EMSolver = new EMFieldSolver(settings, meshes);
+    EMSolver = std::make_shared<EMFieldSolver>(settings, meshes);
     std::cout << std::setfill(' ') << std::setw(4) << ' ' << std::fixed << 0.0 << std::setw(5) << ' '; //NOTE: Time is hardcoded here
 
     for (auto & mesh: meshes) {
@@ -30,11 +30,9 @@ void SolverManager::Advance(double timeStep) {
         EMSolver->AssembleRhoAndJ();
         EMSolver->UpdatePotential();
 
-        #pragma omp parallel for num_threads(settings.numMeshes)
-        for (unsigned int j = 0; j < settings.numMeshes; j++) {
+        for (unsigned int j = 0; j < settings.q.size(); j++) {
             meshes[j]->Advance(timeStep, i);
         }
-
         settings.UpdateTime(i, timeStep);
         EMSolver->RGKStep(i, timeStep);
     }
@@ -47,16 +45,12 @@ void SolverManager::AdvanceFields(double timeStep) {
     }
 }
 
-void SolverManager::reGrid(double time) {
+void SolverManager::reGrid(double t) {
     double T = settings.tempEM[0] / cs;
-    //std::stringstream outTime;
 
-    //outTime << time/T;
-    std::cout << std::setfill(' ') << std::setw(4) << ' ' << std::fixed << std::setprecision(5) << time/T << std::setw(5) << ' ';
+    std::cout << std::setfill(' ') << std::setw(4) << ' ' << std::fixed << std::setprecision(5) << t/T << std::setw(5) << ' ';
 
     for (auto & mesh: meshes) {
-        if (settings.output.rectangleData) mesh->outputRectangleData(time);
-
         mesh->updateHierarchy();
         screenOutput(mesh);
     }
@@ -66,6 +60,14 @@ std::string SolverManager::centeredOutput(std::string const& original, int targe
     int padding = targetSize - original.size();
 
     return padding > 0 ? std::string(padding / 2, ' ') + original + std::string(padding / 2, ' ') : original;
+}
+
+void SolverManager::OutputRectangles(double t) {
+    if (settings.output.rectangleData) {
+        for (auto & mesh: meshes) {
+            mesh->outputRectangleData(t);
+        }
+    }
 }
 
 void SolverManager::screenOutput(const std::shared_ptr<Mesh> &mesh) {
@@ -97,56 +99,66 @@ void SolverManager::screenOutput(const std::shared_ptr<Mesh> &mesh) {
     std::cout << std::setw(30) << centeredOutput(rectNumss, 29) << std::endl;
 }
 
-void SolverManager::fileOutput(double time) {
+void SolverManager::fileOutput(double t) {
     //Write all file contents
-    //rectangleData is handled via reGrid()
-    bool timeOutput = false;
+   //rectangleData is handled separately
+   if (settings.output.energy) {
+       EMSolver->AssembleEnergy();
+   }
 
-    if (settings.output.charge) {
-        EMSolver->DumpCharge();
-        timeOutput = true;
-    }
-
-    if (settings.output.energy) {
-        EMSolver->AssembleEnergy();
-        EMSolver->DumpEnergy();
-        timeOutput = true;
-    }
-
-    if (settings.output.potential) {
-        EMSolver->DumpPotential();
-        timeOutput = true;
-    }
-
-    if (settings.output.EFieldLongitudinal) {
-        EMSolver->DumpEFieldLongitudinal();
-        timeOutput = true;
-    }
-
-    if (settings.output.EFieldTransverse) {
-        EMSolver->DumpEFieldTransverse();
-        timeOutput = true;
-    }
-
-    if (settings.output.BFieldTransverse) {
-        EMSolver->DumpBFieldTransverse();
-        timeOutput = true;
-    }
-
-    if (settings.output.AFieldSquared) {
-        EMSolver->DumpAsqField();
-        timeOutput = true;
-    }
-
-    if (timeOutput) {
-        EMSolver->DumpTime(time);
-    }
+   #pragma omp parallel sections
+   {
+       #pragma omp section
+       {
+           if (settings.output.charge) {
+               EMSolver->DumpCharge();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.energy) {
+               EMSolver->DumpEnergy();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.potential) {
+               EMSolver->DumpPotential();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.EFieldLongitudinal) {
+               EMSolver->DumpEFieldLongitudinal();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.EFieldTransverse) {
+               EMSolver->DumpEFieldTransverse();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.BFieldTransverse) {
+               EMSolver->DumpBFieldTransverse();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.AFieldSquared) {
+               EMSolver->DumpAsqField();
+           }
+       }
+       #pragma omp section
+       {
+           if (settings.output.time) {
+               EMSolver->DumpTime(t);
+           }
+       }
+   }
 }
 
 double SolverManager::CalculateDt(double cfl) {
     return cfl * EMSolver->EstimateCFLBound();
-}
-
-SolverManager::~SolverManager() {
-    delete EMSolver;
 }

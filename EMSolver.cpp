@@ -114,6 +114,7 @@ void EMFieldSolver::AssembleRhoAndJ() {
     }
 
     for (unsigned int i=0; i<meshes.size();i++) {
+        #pragma ivdep
         for (unsigned int j=0; j<x_size; j++) {
             charge[j]+=charges[i][j];
         }
@@ -201,6 +202,7 @@ void EMFieldSolver::RGKStep(int step, double timestep) {
 }
 
 void EMFieldSolver::RGKUpdateIntermediateSolution(int step, double timestep) {
+
     unsigned int iloop = x_size + n_prepad + n_postpad;
 
     if (step == -1) {
@@ -624,15 +626,6 @@ void EMFieldSolver::EnforceChargeNeutralization() {
     for (unsigned int i = 0; i < charge.size(); i++) {
         neutralizationCharge[i] = -charge[i];
     }
-}
-
-__attribute__((vector, nothrow)) double EMFieldSolver::GetCellAverageASquared(int i) {
-    i += n_prepad;
-    i = i > -1 ? i : 0;
-    i = i < ((int)x_size + n_prepad + n_postpad) ? i : ((int)x_size + n_prepad + n_postpad - 1);
-    double ay = Ay[Index(i, 1)], az = Az[Index(i, 1)];
-
-    return (ay * ay) + (az * az);
 }
 
 double EMFieldSolver::EstimateCFLBound() {

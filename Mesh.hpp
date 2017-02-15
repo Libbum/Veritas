@@ -4,7 +4,7 @@
 class Mesh {
     std::vector<level> hierarchy;
     Settings &settings;
-    EMFieldSolver *EMSolver;
+    std::shared_ptr<EMFieldSolver> EMSolver;
     std::shared_ptr<Rectangle> bc;
 public:
     int particleType;
@@ -15,9 +15,8 @@ public:
     void InterpolateRhoAndJToFinestMesh(std::vector<double> &charge, std::vector<double> &J);
     void InterpolateEnergyToFinestMesh(std::vector<double> &energy);
     void SetUpVlasovPoisson(int i);
-    void SetFieldSolver(EMFieldSolver *solver);
+    void SetFieldSolver(const std::shared_ptr<EMFieldSolver> &solver);
     void updateHierarchy(bool init=false);
-    void loadBalanceRectangles(level &identified);
     bool static choose_second(const coords &lhs, const coords &rhs);
     bool static choose_first(const coords &lhs, const coords &rhs);
     int sgn(int &x);
@@ -35,10 +34,19 @@ public:
     void mergeDownFlaggedData(const int &lvl, const rect &r, std::vector<coords> &foundCells);
     void getExtrema(rect &extrema, const std::vector<coords> &flaggedCells);
     void outputRectangleData(double tidx);
-    void saveRectangleData(std::ofstream &os, rect &rectangle, std::vector<rectData> &output);
+    inline double getNe(double xp,double tempp0,double plasma_xl_bound,double plasma_xr_bound);
     void promoteHierarchyToMesh(bool init);
     void InterMeshDataTransfer(const std::vector<std::unique_ptr<Level>> &levels_n);
     void PushBoundaryC();
 };
+
+#pragma omp declare simd simdlen(8)
+inline double Mesh::getNe(double xp,double tempp0,double plasma_xl_bound,double plasma_xr_bound) {
+    double ne=0.0;
+    if ((xp > plasma_xl_bound)&&(xp < plasma_xr_bound)) {
+        ne =  tempp0;
+    }
+    return ne;
+}
 
 #endif /* __Mesh_hpp__ */

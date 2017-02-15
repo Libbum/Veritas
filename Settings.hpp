@@ -5,20 +5,22 @@ struct Input {
     double minEfficiency = 0.6, dx = 0.5, k = 0.01;
     double refinementCriteria = 1e-8, cfl = 0.9, sizeWeight = 0.0;
     double preLength = 2, postLength = 2;
-    unsigned int nx = 76*4, r = 2, Lfinest = 5, loadBalanceLength = 30;
+    unsigned int nx = 76*4, r = 2, Lfinest = 5;
+    double plasma_xl_bound = 3.0e-6, plasma_xr_bound = 7.0e-6;
     std::vector<double> tempEM = {0.0};
 };
 
 struct Particles {
-    std::vector<double> mass = {9.10938291e-31,9.10938291e-31*1836};
-    std::vector<double> charge = {-1.60217657e-19,1.60217657e-19};
-    std::vector<std::vector<double>> misc = {{0.0,0.01},{0.0,0.01}};
-    std::vector<unsigned int> np = {250,50};
-    std::vector<double> dp = {0.1,0.1};
-    std::vector<double> pmin = {0.1,0.1};
+    std::vector<double> mass = {9.10938291e-31};
+    std::vector<double> charge = {-1.60217657e-19};
+    std::vector<std::vector<double>> misc = {{0.0,0.01}};
+    std::vector<unsigned int> np = {50};
+    std::vector<double> dp = {0.1};
+    std::vector<double> pmin = {0.1};
 };
 
 struct Output {
+    bool time = true;
     bool rectangleData = true;
     bool charge = true;
     bool energy = true;
@@ -34,10 +36,10 @@ class Settings {
     EMFieldSolver *EMSolver;
 public:
     Output output;
-    double dx, time, minEfficiency,preLength,postLength,refinementCriteria,cfl,sizeWeight;
+    double dx, time, minEfficiency,preLength,postLength,refinementCriteria,cfl,sizeWeight,plasma_xl_bound,plasma_xr_bound;
     std::vector<double> m, q, m_inv, dp, fMax, tempEM, pmin;
     std::vector<std::vector<double>> temp;
-    unsigned int x_size_finest, x_size, refinementRatio, numMeshes, numThreads, loadBalanceLength;
+    unsigned int x_size_finest, x_size, refinementRatio;
     int maxDepth,quadratureDepth;
     std::vector<unsigned int> p_size, p_size_finest;
     Settings(const Input &grid, const Particles &particles, const Output &out);

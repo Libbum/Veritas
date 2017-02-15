@@ -14,7 +14,7 @@ class Rectangle {
     int refinementRatio, depth, particleType;
     double dp, dx, m_inv;
     Settings &settings;
-    EMFieldSolver *EMSolver;
+    std::shared_ptr<EMFieldSolver> EMSolver;
     bool up, down, left, right;
 public:
     int n_x, n_p, x_pos, p_pos;
@@ -39,7 +39,7 @@ public:
     void CalculateRhoAndJ();
     void CalculateEnergy();
     void InitializeDistribution();
-    void SetFieldSolver(EMFieldSolver *solver);
+    void SetFieldSolver(const std::shared_ptr<EMFieldSolver> &solver);
     std::vector<double> GetWenoValueFromCoarseLevel(int i, int j, int d,int val=1);
     double RGKGetFluxP(int i, int j);
     double RGKGetFluxX(int i, int j);
@@ -47,6 +47,7 @@ public:
     void CalculateConnectivitySame(const std::shared_ptr<Rectangle> &rectangle);
     void CalculateConnectivityFromFiner(const std::shared_ptr<Rectangle> &current, const std::shared_ptr<Rectangle> &rectangle);
     double GetWenoEdgeValue(double f1,double f2,double f3,double f4,bool right);
+    double GetWenoEdgeValueNoMax(double f1,double f2,double f3,double f4,bool right);
     void GetDataFromCoarseLevelRectangle(const std::shared_ptr<Rectangle> &rectangle);
     void GetDataFromSameLevelRectangle(const std::shared_ptr<Rectangle> &rectangle);
     inline double Gamma(double p_x,double a_squared);
@@ -63,6 +64,8 @@ public:
     double RGKGetFluxXL(int i, int j);
     inline int Index6(int i, int j, int state);
     inline int Index3(int i, int j, int state);
+    inline double valmax(double a, double b);
+    inline double valmin(double a, double b);
     void CalculateDifferentBoundaryC();
     double GetMagneticForce(int i);
     double GetCellAverageASquared(int i);
@@ -84,20 +87,42 @@ inline double Rectangle::Momentum(double i) {
     return settings.pmin[particleType] + dp * (i + p_pos);
 }
 
+#pragma omp declare simd simdlen(4)
 inline int Rectangle::Index(int i, int j, int state) {
     return 8*((n_p + 4) * (i + 2) + 2 + j) + state;
 }
 
+#pragma omp declare simd simdlen(4)
 inline int Rectangle::Index3(int i, int j, int state) {
     return 3*((n_p + 4) * (i + 2) + 2 + j) + state;
 }
 
+#pragma omp declare simd simdlen(4)
 inline int Rectangle::Index6(int i, int j, int state) {
     return 6*((n_p + 4) * (i + 2) + 2 + j) + state;
 }
 
+#pragma omp declare simd simdlen(4)
 inline int Rectangle::IndexNS(int i, int j) {
     return (n_p + 4) * (i + 2) + 2 + j;
+}
+
+#pragma omp declare simd simdlen(8)
+inline double Rectangle::valmax(double a, double b) {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+#pragma omp declare simd simdlen(8)
+inline double Rectangle::valmin(double a, double b) {
+    if (a < b) {
+        return a;
+    } else {
+        return b;
+    }
 }
 
 inline double Rectangle::ErrorEstimate(int i,int j) {
@@ -152,8 +177,9 @@ inline double Rectangle::CalculateFluxToCoarseXL(int i,int j) {
     return temp;
 }
 
+#pragma omp declare simd simdlen(8)
 inline double Rectangle::Gamma(double p_x,double a_squared) {
-    return std::sqrt(1+((p_x*p_x)+a_squared)*((m_inv*c_inv)*(m_inv*c_inv)));
+    return std::sqrt(1.0+((p_x*p_x)+a_squared)*((m_inv*c_inv)*(m_inv*c_inv)));
 }
 
 inline double Rectangle::RGKGetFluxPLN(int i,int j){

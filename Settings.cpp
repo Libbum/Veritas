@@ -20,17 +20,13 @@ Settings::Settings(const Input &grid, const Particles &particles, const Output &
     postLength = grid.postLength;
     cfl = grid.cfl;
     sizeWeight = grid.sizeWeight;
-    loadBalanceLength = grid.loadBalanceLength;
     m = particles.mass;
     q = particles.charge;
     tempEM = grid.tempEM;
     temp = particles.misc;
     pmin = particles.pmin;
-
-    //Set threading counters
-    unsigned int maxThreads = omp_get_max_threads();
-    numMeshes = std::min((unsigned)q.size(), maxThreads);
-    numThreads = std::max(maxThreads / numMeshes, (unsigned)1);
+    plasma_xl_bound = grid.plasma_xl_bound;
+    plasma_xr_bound = grid.plasma_xr_bound;
 
     //User may override some of these
     settingsOverride();
@@ -38,11 +34,6 @@ Settings::Settings(const Input &grid, const Particles &particles, const Output &
     //Hard failures
     if (refinementRatio % 2) {
         std::cerr << "ERROR: Mesh refinement ratio 'refinementRatio' must be an even value." << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    if (loadBalanceLength % 2) {
-        std::cerr << "ERROR: 'loadBalanceLength' must be an even value." << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -86,9 +77,6 @@ Settings::Settings(const Input &grid, const Particles &particles, const Output &
 
     std::cout << std::setw(maxleft) << "dx: " << std::setw(OUTW / 2 - maxleft) << dx;
     std::cout << std::setw(maxright) << "PostLength: " << std::setw(OUTW / 2 - maxright) << postLength << std::endl;
-
-    std::cout << std::setw(maxleft) << "Mesh Threads: " << std::setw(OUTW / 2 - maxleft) << numMeshes;
-    std::cout << std::setw(maxright) << "Compute Threads: " << std::setw(OUTW / 2 - maxright) << numThreads << std::endl;
 
     title(" Particle Properties ", '=');
     unsigned int numSpecies = m.size();
@@ -160,7 +148,7 @@ int Settings::GetXSize(int level) {
 }
 
 int Settings::GetPSize(int level, int particleType) {
-    return p_size.at(particleType) * std::pow(refinementRatio, -level + maxDepth);
+    return p_size[particleType] * std::pow(refinementRatio, -level + maxDepth);
 }
 
 double Settings::GetMass(int i) {

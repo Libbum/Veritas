@@ -13,21 +13,13 @@ set (CMAKE_MODULE_PATH "${CMAKE_BINARY_DIR}/Modules/" CACHE PATH "CMake module p
 find_package (OpenMP REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
-#If we use the intel compilers, the CMAKE_CXX_STANDARD variable isn't read. Also we add a few more optimisations.
-if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
-   #Default IPO, drop superflous warnings
-   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHost -parallel -ansi-alias -std=c++14 -fp-model fast -wd11074 -wd11076")
-   else()
-   #Assuming GNU
-   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
-endif()
-
 if (USE_MKL)
    find_package (MKL)
    if (MKL_FOUND)
+      #If we use the intel compilers, the CMAKE_CXX_STANDARD variable isn't read. Also we add a few more optimisations.
       if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
          #Default IPO, drop superflous warnings
-         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMKL_ILP64 -I${MKL_ROOT}/include")
+         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHost -parallel -ansi-alias -DMKL_ILP64 -I${MKL_ROOT}/include -std=c++14 -fp-model fast -wd11074 -wd11076")
       else()
          #Assuming GNU
          set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMKL_ILP64 -m64 -I${MKL_ROOT}/include")
@@ -51,9 +43,9 @@ include_directories (${CMAKE_BINARY_DIR}/generated)
 add_executable (veritas BoundaryCondition.cpp Level.cpp Rectangle.cpp SolverManager.cpp EMSolver.cpp Mesh.cpp Settings.cpp veritas.cpp)
 if (MKL_FOUND)
    if (${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
-      target_link_libraries (veritas -Wl,--start-group ${MKL_ROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKL_ROOT}/lib/intel64/libmkl_core.a ${MKL_ROOT}/lib/intel64/libmkl_intel_thread.a -Wl,--end-group -lpthread -lm -ldl)
+      target_link_libraries (veritas -L${MKLROOT}/lib/intel64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl)
    else()
-      target_link_libraries (veritas -Wl,--start-group ${MKL_ROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKL_ROOT}/lib/intel64/libmkl_core.a ${MKL_ROOT}/lib/intel64/libmkl_gnu_thread.a -Wl,--end-group -lpthread -lm -ldl)
+      target_link_libraries (veritas -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl)
    endif()
 else()
    target_link_libraries (veritas lapack blas)

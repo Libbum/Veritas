@@ -1,6 +1,6 @@
 function compositeViewer(map, tidx, particleType, rundir, logyn, rectsyn)
 %Some good default values:
-%map = flipud(hot(256)); tidx = 20; particleType = 0; rundir = '../bin/'; logyn = true; rectsyn = false;
+%map = flipud(hot(256)); tidx = 16; particleType = 0; rundir = '../bin/'; logyn = true; rectsyn = false;
 
 %-------------
 fid = fopen([rundir 'run.log'],'r');

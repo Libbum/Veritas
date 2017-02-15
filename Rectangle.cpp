@@ -88,24 +88,24 @@ Rectangle::Rectangle(int n_x, int n_p, int x_pos, int p_pos, int depth, Settings
     interpolationMatrix[10] = -0.166666666666667;
     interpolationMatrix[11] = 0.083333333333334;
 
-    interpolatCoefsREL.resize(3 * relativeToBottom, 0.0);
-    interpolatCoefsREF.resize(3 * refinementRatio, 0.0);
+    interpolatCoefsREL.assign(3 * relativeToBottom, 0.0);
+    interpolatCoefsREF.assign(3 * refinementRatio, 0.0);
 
     for (int i = 0; i < refinementRatio; i++) {
         double tl = -0.5 + i / (double)refinementRatio;
         double tr = -0.5 + (i + 1.0) / (double)refinementRatio;
 
         interpolatCoefsREF[3 * i] = (tl + tr) * 0.5;
-        interpolatCoefsREF[3 * i + 1] = (tl * tl + tl * tr + tr * tr) / 3.0 - 1.0 / 12;
+        interpolatCoefsREF[3 * i + 1] = (tl * tl + tl * tr + tr * tr) / 3.0 - (1.0/12);
         interpolatCoefsREF[3 * i + 2] = (tl * tl * tl + tl * tl * tr + tl * tr * tr + tr * tr * tr) * 0.25;
     }
 
     for (int i = 0; i < relativeToBottom; i++) {
-        double tl = -0.5 + i / (double)relativeToBottom;
-        double tr = -0.5 + (i + 1.0) / (double)relativeToBottom;
+        double tl = -0.5 + i / relativeToBottom;
+        double tr = -0.5 + (i + 1.0) / relativeToBottom;
 
         interpolatCoefsREL[3 * i] = (tl + tr) * 0.5;
-        interpolatCoefsREL[3 * i + 1] = (tl * tl + tl * tr + tr * tr) / 3.0 - 1.0 / 12;
+        interpolatCoefsREL[3 * i + 1] = (tl * tl + tl * tr + tr * tr) / 3.0 - (1.0/12);
         interpolatCoefsREL[3 * i + 2] = (tl * tl * tl + tl * tl * tr + tl * tr * tr + tr * tr * tr) * 0.25;
     }
 
@@ -121,16 +121,16 @@ Rectangle::~Rectangle() {
 std::vector<double> Rectangle::GetInterpolantsREF(double f1, double f2, double f3, double f4, double f5) {
     std::vector<double> temp;
 
-    temp.resize(refinementRatio, 0.0);
+    temp.assign(refinementRatio, 0.0);
 
     f5 -= f3; f4 -= f3; f2 -= f3; f1 -= f3;
 
     double a1 = interpolationMatrix[0] * f1 + interpolationMatrix[1] * f2 + interpolationMatrix[2] * f4 + interpolationMatrix[3] * f5;
     double a2 = interpolationMatrix[4] * f1 + interpolationMatrix[5] * f2 + interpolationMatrix[6] * f4 + interpolationMatrix[7] * f5;
     double a3 = interpolationMatrix[8] * f1 + interpolationMatrix[9] * f2 + interpolationMatrix[10] * f4 + interpolationMatrix[11] * f5;
-    #pragma ivdep
+#pragma ivdep
     for (int i = 0; i < refinementRatio; i++) {
-        temp[i] = interpolatCoefsREF[3 * i] * a1 + interpolatCoefsREF[3 * i + 1] * a2 + interpolatCoefsREF[3 * i + 2] * a3 + f3;
+        temp[i] = interpolatCoefsREF[3 * i] * a1 + interpolatCoefsREF[3 * i + 1] * a2 + interpolatCoefsREF[3 * i + 2] * a3 + f3; //f3
     }
 
     return temp;
@@ -139,16 +139,16 @@ std::vector<double> Rectangle::GetInterpolantsREF(double f1, double f2, double f
 std::vector<double> Rectangle::GetInterpolantsREL(double f1, double f2, double f3, double f4, double f5) {
     std::vector<double> temp;
     int rtb = relativeToBottom;
-    temp.resize(rtb, 0.0);
+    temp.assign(rtb, 0.0);
 
     f5 -= f3; f4 -= f3; f2 -= f3; f1 -= f3;
 
     double a1 = interpolationMatrix[0] * f1 + interpolationMatrix[1] * f2 + interpolationMatrix[2] * f4 + interpolationMatrix[3] * f5;
     double a2 = interpolationMatrix[4] * f1 + interpolationMatrix[5] * f2 + interpolationMatrix[6] * f4 + interpolationMatrix[7] * f5;
     double a3 = interpolationMatrix[8] * f1 + interpolationMatrix[9] * f2 + interpolationMatrix[10] * f4 + interpolationMatrix[11] * f5;
-    #pragma ivdep
+#pragma ivdep
     for (int i = 0; i < rtb; i++) {
-        temp[i] = interpolatCoefsREL[(int)3 * i] * a1 + interpolatCoefsREL[(int)3 * i + (int)1] * a2 + interpolatCoefsREL[(int)3 * i + (int)2] * a3 + f3;
+        temp[i] = interpolatCoefsREL[3 * i] * a1 + interpolatCoefsREL[3 * i + 1] * a2 + interpolatCoefsREL[3 * i + 2] * a3 + f3; //f3
     }
 
     return temp;
@@ -158,29 +158,34 @@ void Rectangle::CalculateRhoAndJ() {
     std::fill(chargeR.begin(), chargeR.end(), 0.0);
     std::fill(currentR.begin(), currentR.end(), 0.0);
 
-    double q = settings.GetCharge(particleType);
-    double c1 = m_inv * c_inv;
-    double c2 = 1 / c1;
-    double c3 = 1 / 48.0;
-    int rtb = relativeToBottom;
+    const double q = settings.GetCharge(particleType);
+    const double mass = settings.GetMass(particleType);
+    const double c1 = m_inv * c_inv;
+    const double c2 = 1 / c1;
+    const double c3 = 1 / 48.0;
+    const int rtb = relativeToBottom;
 
-    #if defined(USINGMKL)
-    //unsigned int oldmode = vmlSetMode( VML_EP );
-    std::vector<double> loginput;
-    std::vector<double> logoutput;
-    std::vector<double> a_squared;
-    loginput.assign(3*rtb,0.0);
-    logoutput.assign(3*rtb,0.0);
-    a_squared.assign(rtb,0.0);
-    #endif
-
+#pragma omp parallel for schedule(guided)
     for (int i = 0; i < n_x; i++) {
+#if defined(USINGMKL)
+        //unsigned int oldmode = vmlSetMode( VML_EP );
+        std::vector<double> loginput;
+        std::vector<double> logoutput;
+        std::vector<double> a_squared;
+        loginput.assign(3*rtb,0.0);
+        logoutput.assign(3*rtb,0.0);
+        a_squared.assign(rtb,0.0);
+#else
+        double gm = 0.0, gm1 = 0.0, gp1 = 0.0;
+#endif
+
         int j = 0;
         std::vector<double> temp = (GetInterpolantsREL(f[Index3(i - 2, j, 1)], f[Index3(i - 1, j, 1)], f[Index3(i, j, 1)], f[Index3(i + 1, j, 1)], f[Index3(i + 2, j, 1)]));
         std::vector<double> tempm1 = (GetInterpolantsREL(f[Index3(i - 2, j - 1, 1)], f[Index3(i - 1, j - 1, 1)], f[Index3(i, j - 1, 1)], f[Index3(i + 1, j - 1, 1)], f[Index3(i + 2, j - 1, 1)]));
         std::vector<double> tempp1 = (GetInterpolantsREL(f[Index3(i - 2, j + 1, 1)], f[Index3(i - 1, j + 1, 1)], f[Index3(i, j + 1, 1)], f[Index3(i + 1, j + 1, 1)], f[Index3(i + 2, j + 1, 1)]));
         double te = 0.0, tp1 = 0.0, tm1 = 0.0;
 
+#pragma ivdep
         for (int k = 0; k < rtb; k++) {
             te += temp[k];
             tp1 += tempp1[k];
@@ -191,19 +196,20 @@ void Rectangle::CalculateRhoAndJ() {
         double corm1 = f[Index3(i, j - 1, 1)] - (1.0 / relativeToBottom) * tm1;
         double corp1 = f[Index3(i, j + 1, 1)] - (1.0 / relativeToBottom) * tp1;
 
+        //Vectorisation is not efficient here.
         for (int k = 0; k < rtb; k++) {
             temp[k] += cor;
             tempm1[k] += corm1;
             tempp1[k] += corp1;
         }
 
-        double gm = 0.0, gm1 = 0.0, gp1 = 0.0;
+
         for (int j = 0; j < n_p; j++) {
             if (!is_nested[IndexNS(i, j)]) {
-                #if defined(USINGMKL)
-                #pragma ivdep
+#if defined(USINGMKL)
+#pragma simd
                 for (int k = 0; k < rtb; k++) {
-                    a_squared[k] = ((EMFieldSolver*)EMSolver)->EMFieldSolver::GetCellAverageASquared((i + x_pos) * rtb + k);
+                    a_squared[k] = EMSolver->EMFieldSolver::GetCellAverageASquared((i + x_pos) * rtb + k);
 
                     chargeR[i * rtb + k] += temp[k];
 
@@ -229,7 +235,7 @@ void Rectangle::CalculateRhoAndJ() {
 
                     currentR[i * rtb + k] += temp[k] * gm + c3 * (gp1 - gm1) * (tempp1[k] - tempm1[k]);
                 }
-                #else
+#else
                 for (int k = 0; k < rtb; k++) {
                     double a_squared = ((EMFieldSolver*)EMSolver)->EMFieldSolver::GetCellAverageASquared((i + x_pos) * rtb + k);
 
@@ -246,30 +252,31 @@ void Rectangle::CalculateRhoAndJ() {
                     chargeR[i * rtb + k] += temp[k];
                     currentR[i * rtb + k] += temp[k] * gm + c3 * (gp1 - gm1) * (tempp1[k] - tempm1[k]);
                 }
-                #endif
+#endif
             }
 
             tempm1.swap(temp);
             temp.swap(tempp1);
-            tempp1 = (GetInterpolantsREL(f[Index3(i - 2, j + 2, 1)], f[Index3(i - 1, j + 2, 1)], f[Index3(i, j + 2, 1)], f[Index3(i + 1, j + 2, 1)], f[Index3(i + 2, j + 2, 1)]));
+            tempp1 = GetInterpolantsREL(f[Index3(i - 2, j + 2, 1)], f[Index3(i - 1, j + 2, 1)], f[Index3(i, j + 2, 1)], f[Index3(i + 1, j + 2, 1)], f[Index3(i + 2, j + 2, 1)]);
 
             tp1 = 0.0;
 
+#pragma nounroll
             for (int k = 0; k < rtb; k++) {
                 tp1 += tempp1[k];
             }
 
             corp1 = f[Index3(i, j + 2, 1)] - (1.0 / relativeToBottom) * tp1;
 
-            #pragma ivdep
+            //Vectorisation is not efficient here.
             for (int k = 0; k < rtb; k++) {
                 tempp1[k] += corp1;
             }
         }
-
+#pragma ivdep
         for (int k = 0; k < rtb; k++) {
             chargeR[i * rtb + k] *= dp * q;
-            currentR[i * rtb + k] *= -q * q / settings.GetMass(particleType);
+            currentR[i * rtb + k] *= -q * q / mass;
         }
     }
 }
@@ -277,19 +284,22 @@ void Rectangle::CalculateRhoAndJ() {
 void Rectangle::CalculateEnergy() {
     std::fill(energyR.begin(), energyR.end(), 0.0);
     int rtb = relativeToBottom;
+#pragma omp parallel for schedule(guided)
     for (int i = 0; i < n_x; i++) {
         for (int j = 0; j < n_p; j++) {
             if (!is_nested[IndexNS(i, j)]) {
-                std::vector<double> tempp = (GetInterpolantsREL(f[Index3(i, j - 2, 1)], f[Index3(i, j - 1, 1)], f[Index3(i, j, 1)], f[Index3(i, j + 1, 1)], f[Index3(i, j + 2, 1)]));
+                std::vector<double> tempp = GetInterpolantsREL(f[Index3(i, j - 2, 1)], f[Index3(i, j - 1, 1)], f[Index3(i, j, 1)], f[Index3(i, j + 1, 1)], f[Index3(i, j + 2, 1)]);
+#pragma ivdep
                 for (int k = 0; k < rtb; k++) {
-                    energyR.at(j * rtb + k) += tempp[k];
+                    energyR[j * rtb + k] += tempp[k];
                 }
             }
         }
     }
-    for (int j = 0; j < n_p; j++) {
-        for (int k = 0; k < rtb; k++) {
-            energyR.at(j * rtb + k) *= dx;
+    for (int k = 0; k < rtb; k++) {
+#pragma ivdep
+        for (int j = 0; j < n_p; j++) {
+            energyR[j * rtb + k] *= dx;
         }
     }
 }
@@ -326,7 +336,7 @@ void Rectangle::UpdateInterriorPoints(int val) {
     }
 }
 
-void Rectangle::SetFieldSolver(EMFieldSolver *solver) {
+void Rectangle::SetFieldSolver(const std::shared_ptr<EMFieldSolver> &solver) {
     EMSolver = solver;
 }
 
@@ -334,7 +344,7 @@ std::vector<double> Rectangle::GetWenoValueFromCoarseLevel(int i, int j, int d,i
     int i_coarse = i / refinementRatio - x_pos;
     int j_coarse = j / refinementRatio - p_pos;
 
-    std::vector< std::vector<double> > temps;
+    std::vector<std::vector<double>> temps;
 
     for (int k = -2; k < 3; k++) {
         temps.push_back(GetInterpolantsREF(f[Index3(i_coarse - 2, j_coarse + k, val)], f[Index3(i_coarse - 1, j_coarse + k, val)], f[Index3(i_coarse, j_coarse + k, val)], f[Index3(i_coarse + 1, j_coarse + k, val)], f[Index3(i_coarse + 2, j_coarse + k, val)]));
@@ -346,7 +356,6 @@ std::vector<double> Rectangle::GetWenoValueFromCoarseLevel(int i, int j, int d,i
 
     for (int k = 0; k < refinementRatio; k++) {
         std::vector<double> interpolants_part = GetInterpolantsREF(temps[0][k], temps[1][k], temps[2][k], temps[3][k], temps[4][k]);
-
         for (int l = 0; l < refinementRatio; l++) {
             interpolants[k * refinementRatio + l] = interpolants_part[l];
             sum += interpolants_part[l];
@@ -389,7 +398,6 @@ std::vector<double> Rectangle::GetWenoValueFromCoarseLevel(int i, int j, int d,i
             interpolants_reduced[2 * k] = interpolants[refinementRatio * k];
             interpolants_reduced[2 * k + 1] = interpolants[refinementRatio * k + 1];
         }
-
         return interpolants_reduced;
     } else if (d == 3) {
         std::vector<double> interpolants_reduced;
@@ -606,14 +614,41 @@ void Rectangle::UpdateSameLevelBoundaries(int val) {
 }
 
 void Rectangle::InitializeDistribution() {
-    double temp, xp, pp;
 
-    int nvals = std::pow(refinementRatio, depth + settings.quadratureDepth);
+    const int nvals = std::pow(refinementRatio, depth + settings.quadratureDepth);
+    const double tempp1 = settings.temp[particleType][1];
+    const double tempp0 = settings.temp[particleType][0];
+    const double plasma_xl_bound = settings.plasma_xl_bound;
+    const double plasma_xr_bound = settings.plasma_xr_bound;
 
+#pragma omp parallel for schedule(guided)
     for (int i = 0; i < n_x; i++) {
         for (int j = 0; j < n_p; j++) {
-            temp = 0.0;
+            double temp = 0.0, xp = 0.0, pp = 0.0;
 
+#if MKLINIT == 1
+            std::vector<double> expinput;
+            std::vector<double> expoutput;
+            std::vector<double> ne;
+            expinput.assign(nvals*nvals,0.0);
+            expoutput.assign(nvals*nvals,0.0);
+            ne.assign(nvals*nvals,0.0);
+            for (int k = 0; k < nvals; k++) {
+                for (int l = 0; l < nvals; l++) {
+                    xp = ((0.5 + k) / nvals + i + x_pos) * dx;
+                    pp = Momentum((0.5 + l) / nvals + j);
+                    //temp += settings.InitialDistribution(xp, pp, particleType);
+                    if ((xp > plasma_xl_bound)&&(xp < plasma_xr_bound)) {
+                        ne[k*nvals+l] =  tempp0;
+                    }
+                    expinput[k*nvals+l] = -(pp*pp)/(2.0*tempp1);
+                }
+            }
+            vdExp(nvals*nvals,&expinput[0],&expoutput[0]);
+            for (int m = 0; m < nvals*nvals; m++) {
+                temp += ne[m]*expoutput[m]/std::sqrt(DPI * tempp1);
+            }
+#else
             for (int k = 0; k < nvals; k++) {
                 for (int l = 0; l < nvals; l++) {
                     xp = ((0.5 + k) / nvals + i + x_pos) * dx;
@@ -621,6 +656,7 @@ void Rectangle::InitializeDistribution() {
                     temp += settings.InitialDistribution(xp, pp, particleType);
                 }
             }
+#endif
 
             f[Index3(i, j, 0)] = temp * (1 / std::pow(nvals, 2.0));
             f[Index3(i, j, 1)] = temp * (1 / std::pow(nvals, 2.0));
@@ -940,6 +976,59 @@ double Rectangle::GetWenoEdgeValue(double f1, double f2, double f3, double f4, b
     return (wL * (fL) + wR * (fR));
 }
 
+#pragma omp declare simd simdlen(8)
+double Rectangle::GetWenoEdgeValueNoMax(double f1, double f2, double f3, double f4, bool right) {
+
+    double fL = (1.0 / 6) * (-f1 + 5 * f2 + 2 * f3);
+    double fR = (1.0 / 6) * (2 * f2 + 5 * f3 - f4);
+
+    double AL = f1 - 2 * f2 + f3;
+    double BL = f3 - f1;
+
+    double AR = f2 - 2 * f3 + f4;
+    double BR = f4 - f2;
+
+    double bL = 4.0 / 3 * (AL * AL) + 0.5 * AL * BL + 0.25 * (BL * BL);
+    double bR = 4.0 / 3 * (AR * AR) - 0.5 * AR * BR + 0.25 * (BR * BR);
+
+    double mm(1.0e-10);
+
+    double oL = 0.5 / ((mm + bL) * (mm + bL));
+    double oR = 0.5 / ((mm + bR) * (mm + bR));
+
+    double wL = oL / (oL + oR);
+    double wR = oR / (oL + oR);
+
+    double wL0 = wL * (0.75 + wL * (wL - 0.5));
+    double wR0 = wR * (0.75 + wR * (wR - 0.5));
+
+    double finalwL = 0.0, finalwR = 0.0;
+    //Not using std::max so we can vectorise
+    if (right) {
+        if (wL0 > wR0) {
+            finalwL = wL0 / (wL0 + wR0);
+            finalwR = 1 - (wL0 / (wL0 + wR0));
+        } else {
+            finalwL = wR0 / (wL0 + wR0);
+            finalwR = 1 - (wR0 / (wL0 + wR0));
+        }
+        // wL = std::max(wL0, wR0) / (wL0 + wR0);
+        // wR = 1 - wL;
+    } else {
+        if (wL0 < wR0) {
+            finalwL = wL0 / (wL0 + wR0);
+            finalwR = 1 - (wL0 / (wL0 + wR0));
+        } else {
+            finalwL = wR0 / (wL0 + wR0);
+            finalwR = 1 - (wR0 / (wL0 + wR0));
+        }
+        // wL = std::min(wL0, wR0) / (wL0 + wR0);
+        // wR = 1 - wL;
+    }
+
+    return (finalwL * (fL) + finalwR * (fR));
+}
+
 double Rectangle::RGKGetFluxX(int i, int j) {
     if (!is_interrior_level_boundary_x[IndexNS(i, j)]) {
         double w3 = 1.0 / 48.0;
@@ -1136,8 +1225,8 @@ double Rectangle::RGKGetFluxPL(int i, int j) {
         double Em = q * GetEfield(i);
         double momentum = Momentum(j);
 
-        double bm=q*q*m_inv*GetMagneticForce(i);
-        double Am=q*q*GetCellAverageASquared(i);
+        //double bm=q*q*m_inv*GetMagneticForce(i);
+        //double Am=q*q*GetCellAverageASquared(i);
 
         double am = Em - cc * dx_inv * (Gamma(momentum, as_2) - Gamma(momentum, as_1));
 
@@ -1152,8 +1241,8 @@ double Rectangle::RGKGetFluxXL(int i, int j) {
         double dx_inv = 1 / dx;
         double dp_inv = 1 / dp;
 
-        double q = settings.GetCharge(particleType);
         double cc = cs * cs * settings.GetMass(particleType);
+        double q = settings.GetCharge(particleType);
         double as = q * q * EMSolver->GetASquared(GetFinestIndex(i));
         double am = dp_inv * cc * (Gamma(Momentum(j + 1), as) - Gamma(Momentum(j), as));
 
@@ -1170,6 +1259,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
 
     int pp = up ? n_p : (n_p + 1);
     int pm = down ? 1 : 0;
+    int nx = n_x;
+    int np = n_p;
     int nx1 = n_x + 1;
     int nx2 = n_x + 2;
     int np1 = n_p + 1;
@@ -1182,130 +1273,137 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
         double dx_inv = 1 / dx;
         double dp_inv = 1 / dp;
         double cc = cs * cs * settings.GetMass(particleType);
-
-        for (int i = -1; i < nx2; i++) {
-            double as = q * q * EMSolver->GetASquared(GetFinestIndex(i));
-            #pragma ivdep
-            for (int j = -1; j < np1; j++) {
-                double am =dp_inv * cc * (Gamma(Momentum(j + 1), as) - Gamma(Momentum(j), as));
-                ex[IndexNS(i, j)] = am;
-            }
-        }
-
-        for (int i = 0; i < nx1; i++) {
-            for (int j = -1; j < np1; j++) {
-                fx[IndexNS(i, j)] = GetWenoEdgeValue(f[Index3(i - 2, j, 1)], f[Index3(i - 1, j, 1)], f[Index3(i, j, 1)], f[Index3(i + 1, j, 1)], ex[IndexNS(i, j)] > 0.0);
-            }
-        }
-
-        for (int i = -1; i < nx1; i++) {
-            double as_1 = q * q * EMSolver->GetASquared(GetFinestIndex(i));
-            double as_2 = q * q * EMSolver->GetASquared(GetFinestIndex(i + 1));
-            double Em = q * GetEfield(i);
-            #pragma ivdep
-            for (int j = -1; j < np2; j++) {
-                double momentum = Momentum(j);
-                double am =Em - cc * dx_inv * (Gamma(momentum, as_2) - Gamma(momentum, as_1));
-                ep[IndexNS(i, j)] = am;
-            }
-        }
-
-        for (int i = -1; i < nx1; i++) {
-            for (int j = 0; j < np1; j++) {
-                fp[IndexNS(i, j)] = GetWenoEdgeValue(f[Index3(i, j - 2, 1)], f[Index3(i, j - 1, 1)], f[Index3(i, j, 1)], f[Index3(i, j + 1, 1)], ep[IndexNS(i, j)] > 0.0);
-            }
-        }
-
-        for (int i = 0; i < nx1; i++) {
-            for (int j = -1; j < np1; j++) {
-                double fluxH(0.0);
-
-                if (!is_interrior_level_boundary_x[IndexNS(i, j)]) {
-                    double am = ex[IndexNS(i, j)];
-                    double ap1 = ex[IndexNS(i, j + 1)];
-                    double am1 = ex[IndexNS(i, j - 1)];
-                    double fm = fx[IndexNS(i, j)];
-                    double fp1 = fx[IndexNS(i, j + 1)];
-                    double fm1 = fx[IndexNS(i, j - 1)];
-
-                    fluxH = dx_inv * (fm * am + w3 * (fp1 - fm1) * (ap1 - am1));
-
-                } else {
-                    fluxH = finer_level_x[IndexNS(i, j)]->CalculateFluxToCoarseX(x_pos + i, p_pos + j);
+#pragma omp parallel
+        {
+#pragma omp for schedule(guided)
+            for (int i = -1; i < nx2; i++) {
+                double as = q * q * EMSolver->GetASquared(GetFinestIndex(i));
+#pragma ivdep
+                for (int j = -1; j < np1; j++) {
+                    double am =dp_inv * cc * (Gamma(Momentum(j + 1), as) - Gamma(Momentum(j), as));
+                    ex[IndexNS(i, j)] = am;
                 }
-
-                FxH[Index6(i, j,step)]=fluxH;
             }
-        }
-        for (int i = 0; i < nx1; i++) {
-            for (int j = -1; j < np1; j++) {
-                double fluxL(0.0);
-
-                if (!is_interrior_level_boundary_x[IndexNS(i, j)]) {
-                    double am = ex[IndexNS(i, j)];
-
-                    fluxL = dx_inv * ((am>0.0 ? f[Index3(i-1,j,1)] : f[Index3(i,j,1)]) * am );
-
-                } else {
-
-                    fluxL = finer_level_x[IndexNS(i, j)]->CalculateFluxToCoarseXL(x_pos + i, p_pos + j);
+#pragma omp for schedule(guided) nowait
+            for (int i = 0; i < nx1; i++) {
+#pragma ivdep
+                for (int j = -1; j < np1; j++) {
+                    fx[IndexNS(i, j)] = GetWenoEdgeValueNoMax(f[Index3(i - 2, j, 1)], f[Index3(i - 1, j, 1)], f[Index3(i, j, 1)], f[Index3(i + 1, j, 1)], ex[IndexNS(i, j)] > 0.0);
                 }
-
-                FxL[Index6(i, j,step)]=fluxL;
             }
-        }
-
-        for (int i = -1; i < nx1; i++) {
-            for (int j = 0; j < np1; j++) {
-                double fluxH(0.0);
-
-                if (!is_interrior_level_boundary_p[IndexNS(i, j)]) {
-                    double am = ep[IndexNS(i, j)];
-                    double ap1 = ep[IndexNS(i + 1, j)];
-                    double am1 = ep[IndexNS(i - 1, j)];
-                    double fm = fp[IndexNS(i, j)];
-                    double fp1 = fp[IndexNS(i + 1, j)];
-                    double fm1 = fp[IndexNS(i - 1, j)];
-
-                    fluxH = dp_inv * (fm * am + w3 * (fp1 - fm1) * (ap1 - am1));
-
-                } else {
-                    fluxH = finer_level_p[IndexNS(i, j)]->CalculateFluxToCoarseP(x_pos + i, p_pos + j);
+#pragma omp for schedule(guided)
+            for (int i = -1; i < nx1; i++) {
+                double as_1 = q * q * EMSolver->GetASquared(GetFinestIndex(i));
+                double as_2 = q * q * EMSolver->GetASquared(GetFinestIndex(i + 1));
+                double Em = q * GetEfield(i);
+#pragma ivdep
+                for (int j = -1; j < np2; j++) {
+                    double momentum = Momentum(j);
+                    double am = Em - cc * dx_inv * (Gamma(momentum, as_2) - Gamma(momentum, as_1));
+                    ep[IndexNS(i, j)] = am;
                 }
-
-                FpH[Index6(i, j,step)]=fluxH;
-
             }
-        }
-
-        for (int i =-1; i < nx1; i++) {
-            for (int j = 0; j < np1; j++) {
-                double fluxL(0.0);
-
-                if (!is_interrior_level_boundary_p[IndexNS(i, j)]) {
-                    double am = ep[IndexNS(i, j)];
-
-                    fluxL = dp_inv * ((am>0.0 ? f[Index3(i,j-1,1)] : f[Index3(i,j,1)]) * am );
-
-                } else {
-
-                    fluxL = finer_level_p[IndexNS(i, j)]->CalculateFluxToCoarsePL(x_pos + i, p_pos + j);
+#pragma omp for schedule(guided)
+            for (int i = -1; i < nx1; i++) {
+#pragma ivdep
+                for (int j = 0; j < np1; j++) {
+                    fp[IndexNS(i, j)] = GetWenoEdgeValueNoMax(f[Index3(i, j - 2, 1)], f[Index3(i, j - 1, 1)], f[Index3(i, j, 1)], f[Index3(i, j + 1, 1)], ep[IndexNS(i, j)] > 0.0);
                 }
+            }
+#pragma omp for schedule(guided) nowait
+            for (int i = 0; i < nx1; i++) {
+                for (int j = -1; j < np1; j++) {
+                    double fluxH = 0.0;
 
-                FpL[Index6(i, j,step)]=fluxL;
+                    if (!is_interrior_level_boundary_x[IndexNS(i, j)]) {
+                        double am = ex[IndexNS(i, j)];
+                        double ap1 = ex[IndexNS(i, j + 1)];
+                        double am1 = ex[IndexNS(i, j - 1)];
+                        double fm = fx[IndexNS(i, j)];
+                        double fp1 = fx[IndexNS(i, j + 1)];
+                        double fm1 = fx[IndexNS(i, j - 1)];
 
+                        fluxH = dx_inv * (fm * am + w3 * (fp1 - fm1) * (ap1 - am1));
+
+                    } else {
+                        fluxH = finer_level_x[IndexNS(i, j)]->CalculateFluxToCoarseX(x_pos + i, p_pos + j);
+                    }
+
+                    FxH[Index6(i, j,step)]=fluxH;
+                }
+            }
+#pragma omp for schedule(guided) nowait
+            for (int i = 0; i < nx1; i++) {
+                for (int j = -1; j < np1; j++) {
+                    double fluxL = 0.0;
+
+                    if (!is_interrior_level_boundary_x[IndexNS(i, j)]) {
+                        double am = ex[IndexNS(i, j)];
+
+                        fluxL = dx_inv * ((am>0.0 ? f[Index3(i-1,j,1)] : f[Index3(i,j,1)]) * am );
+
+                    } else {
+
+                        fluxL = finer_level_x[IndexNS(i, j)]->CalculateFluxToCoarseXL(x_pos + i, p_pos + j);
+                    }
+
+                    FxL[Index6(i, j,step)]=fluxL;
+                }
+            }
+#pragma omp for schedule(guided) nowait
+            for (int i = -1; i < nx1; i++) {
+                for (int j = 0; j < np1; j++) {
+                    double fluxH = 0.0;
+
+                    if (!is_interrior_level_boundary_p[IndexNS(i, j)]) {
+                        double am = ep[IndexNS(i, j)];
+                        double ap1 = ep[IndexNS(i + 1, j)];
+                        double am1 = ep[IndexNS(i - 1, j)];
+                        double fm = fp[IndexNS(i, j)];
+                        double fp1 = fp[IndexNS(i + 1, j)];
+                        double fm1 = fp[IndexNS(i - 1, j)];
+
+                        fluxH = dp_inv * (fm * am + w3 * (fp1 - fm1) * (ap1 - am1));
+
+                    } else {
+                        fluxH = finer_level_p[IndexNS(i, j)]->CalculateFluxToCoarseP(x_pos + i, p_pos + j);
+                    }
+
+                    FpH[Index6(i, j,step)]=fluxH;
+
+                }
+            }
+#pragma omp for schedule(guided)
+            for (int i =-1; i < nx1; i++) {
+                for (int j = 0; j < np1; j++) {
+                    double fluxL = 0.0;
+
+                    if (!is_interrior_level_boundary_p[IndexNS(i, j)]) {
+                        double am = ep[IndexNS(i, j)];
+
+                        fluxL = dp_inv * ((am>0.0 ? f[Index3(i,j-1,1)] : f[Index3(i,j,1)]) * am );
+
+                    } else {
+
+                        fluxL = finer_level_p[IndexNS(i, j)]->CalculateFluxToCoarsePL(x_pos + i, p_pos + j);
+                    }
+
+                    FpL[Index6(i, j,step)]=fluxL;
+
+                }
             }
         }
-
         if (step == 0) {
             double a0 = 0.5 * timestep;
 
+            double aSum=a0;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
                     int idx0 = Index6(i, j, 0);
-                    FxLS[idx] = a0 * FxL[idx0];
-                    FpLS[idx] = a0 * FpL[idx0];
+                    FxLS[idx] = aSum * FxL[idx0];
+                    FpLS[idx] = aSum * FpL[idx0];
                     FxDS[idx] = a0 * FxH[idx0]-FxLS[idx];
                     FpDS[idx] = a0 * FpH[idx0]-FpLS[idx];
                 }
@@ -1314,13 +1412,15 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
             double a0 = 0.221776 * timestep;
             double a1 = 0.110224 * timestep;
 
+            double aSum=a0+a1;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
                     int idx0 = Index6(i, j, 0);
                     int idx1 = Index6(i, j, 1);
-                    FxLS[idx] = a0 * FxL[idx0] + a1*FxL[idx1];
-                    FpLS[idx] = a0 * FpL[idx0] + a1 * FpL[idx1];
+                    FxLS[idx] = aSum * FxL[idx0];
+                    FpLS[idx] = aSum * FpL[idx0];
                     FxDS[idx] = a0 * FxH[idx0]+ a1*FxH[idx1]-FxLS[idx];
                     FpDS[idx] = a0 * FpH[idx0]+a1 * FpH[idx1]-FpLS[idx];
                 }
@@ -1330,14 +1430,16 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
             double a1 = -0.17772065232640102 * timestep;
             double a2 = 0.8465672474795197 * timestep;
 
+            double aSum=a0+a1+a2;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
                     int idx0 = Index6(i, j, 0);
                     int idx1 = Index6(i, j, 1);
                     int idx2 = Index6(i, j, 2);
-                    FxLS[idx] = a0 * FxL[idx0] + a1*FxL[idx1]+a2*FxL[idx2];
-                    FpLS[idx] = a0 * FpL[idx0] + a1 * FpL[idx1]+ a2 * FpL[idx2];
+                    FxLS[idx] = aSum * FxL[idx0];
+                    FpLS[idx] = aSum * FpL[idx0];
                     FxDS[idx] = a0 * FxH[idx0]+ a1*FxH[idx1]+a2*FxH[idx2]-FxLS[idx];
                     FpDS[idx] = a0 * FpH[idx0]+a1 * FpH[idx1]+a2*FpH[idx2]-FpLS[idx];
                 }
@@ -1348,6 +1450,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
             double a2 = 1.0587258798684427 * timestep;
             double a3 = 0.30339598837867193 * timestep;
 
+            double aSum=a0+a1+a2+a3;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
@@ -1355,8 +1459,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
                     int idx1 = Index6(i, j, 1);
                     int idx2 = Index6(i, j, 2);
                     int idx3 = Index6(i, j, 3);
-                    FxLS[idx] = a0 * FxL[idx0] + a1*FxL[idx1]+a2*FxL[idx2]+a3*FxL[idx3];
-                    FpLS[idx] = a0 * FpL[idx0] + a1 * FpL[idx1]+ a2 * FpL[idx2]+a3 * FpL[idx3];
+                    FxLS[idx] = aSum * FxL[idx0];
+                    FpLS[idx] = aSum * FpL[idx0];
                     FxDS[idx] = a0 * FxH[idx0]+ a1*FxH[idx1]+a2*FxH[idx2]+a3*FxH[idx3]-FxLS[idx];
                     FpDS[idx] = a0 * FpH[idx0]+a1 * FpH[idx1]+a2*FpH[idx2]+a3 * FpH[idx3]-FpLS[idx];
                 }
@@ -1368,6 +1472,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
             double a3 = 0.4038290605220775 * timestep;
             double a4 = 0.22606457389066084 * timestep;
 
+            double aSum=a0+a1+a2+a3+a4;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
@@ -1376,8 +1482,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
                     int idx2 = Index6(i, j, 2);
                     int idx3 = Index6(i, j, 3);
                     int idx4 = Index6(i, j, 4);
-                    FxLS[idx] = a0 * FxL[idx0] + a1*FxL[idx1]+a2*FxL[idx2]+a3*FxL[idx3]+a4*FxL[idx4];
-                    FpLS[idx] = a0 * FpL[idx0] + a1 * FpL[idx1]+ a2 * FpL[idx2]+a3 * FpL[idx3]+a4 * FpL[idx4];
+                    FxLS[idx] = aSum * FxL[idx0];
+                    FpLS[idx] = aSum * FpL[idx0];
                     FxDS[idx] = a0 * FxH[idx0]+ a1*FxH[idx1]+a2*FxH[idx2]+a3*FxH[idx3]+a4*FxH[idx4]-FxLS[idx];
                     FpDS[idx] = a0 * FpH[idx0]+a1 * FpH[idx1]+a2*FpH[idx2]+a3 * FpH[idx3]+a4 * FpH[idx4]-FpLS[idx];
                 }
@@ -1391,6 +1497,8 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
             double b4 = -0.27524053099500667 * timestep;
             double b5 = 0.25 * timestep ;
 
+            double bSum=b0+b1+b2+b3+b4+b5;
+#pragma omp parallel for schedule(guided)
             for (int i = -2; i < nx2; i++) {
                 for (int j = -2; j < np2; j++) {
                     int idx = IndexNS(i, j);
@@ -1400,22 +1508,23 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
                     int idx3 = Index6(i, j, 3);
                     int idx4 = Index6(i, j, 4);
                     int idx5 = Index6(i, j, 5);
-                    FxLS[idx] = b0 * FxL[idx0] + b1*FxL[idx1]+b2*FxL[idx2]+b3*FxL[idx3]+b4*FxL[idx4]+b5*FxL[idx5];
-                    FpLS[idx] = b0 * FpL[idx0] + b1 * FpL[idx1]+ b2 * FpL[idx2]+b3 * FpL[idx3]+b4 * FpL[idx4]+b5 * FpL[idx5];
+                    FxLS[idx] = bSum * FxL[idx0];
+                    FpLS[idx] = bSum * FpL[idx0];
                     FxDS[idx] = b0 * FxH[idx0]+ b1*FxH[idx1]+b2*FxH[idx2]+b3*FxH[idx3]+b4*FxH[idx4]+b5*FxH[idx5]-FxLS[idx];
                     FpDS[idx] = b0 * FpH[idx0]+b1 * FpH[idx1]+b2*FpH[idx2]+b3 * FpH[idx3]+b4 * FpH[idx4]+b5 * FpH[idx5]-FpLS[idx];
                 }
             }
-
         }
-
-        for (int i=0; i<n_x; i++) {
-            for (int j=0; j<n_p; j++) {
+#pragma omp parallel for collapse(2)
+        for (int i=0; i<nx; i++) {
+            //no vector
+            for (int j=0; j<np; j++) {
                 f[Index3(i,j,2)]=f[Index3(i,j,0)];
             }
         }
 
         for (int i=xm; i<xp; i++) {
+#pragma ivdep
             for (int j=pm; j<pp; j++) {
                 f[Index3(i,j,2)]+=FxLS[IndexNS(i,j)];
                 f[Index3(i-1,j,2)]-=FxLS[IndexNS(i,j)];
@@ -1425,71 +1534,87 @@ void Rectangle::FCTTimeStep(double timestep,int step,int subStep) {
         }
 
     } else if (subStep==1) {
+        //Only having one or two vectors is suprisingly slow.
+#pragma omp parallel for schedule(guided)
         for (int i=-1; i<nx1; i++) {
+            std::vector<double> Pp, Pm, Qm, Qp;
+            Pp.assign(np2,0.0);
+            Pm.assign(np2,0.0);
+            Qm.assign(np2,0.0);
+            Qp.assign(np2,0.0);
+#pragma ivdep
             for (int j=-1; j<np1; j++) {
                 int idx = IndexNS(i,j);
                 int idxij2 = Index3(i,j,2);
-                double Pp=std::max(0.0,FxDS[idx])-std::min(0.0,FxDS[IndexNS(i+1,j)])+std::max(0.0,FpDS[idx])-std::min(0.0,FpDS[IndexNS(i,j+1)]);
-                double Pm=std::max(0.0,FxDS[IndexNS(i+1,j)])-std::min(0.0,FxDS[idx])+std::max(0.0,FpDS[IndexNS(i,j+1)])-std::min(0.0,FpDS[idx]);
 
-                double w1ma=std::max(f[Index3(i,j,0)],f[idxij2]);
-                double w2ma=std::max(f[Index3(i+1,j,0)],f[Index3(i+1,j,2)]);
-                double w3ma=std::max(f[Index3(i-1,j,0)],f[Index3(i-1,j,2)]);
-                double w4ma=std::max(f[Index3(i,j+1,0)],f[Index3(i,j+1,2)]);
-                double w5ma=std::max(f[Index3(i,j-1,0)],f[Index3(i,j-1,2)]);
+                Pp[j+1] = valmax(0.0,FxDS[idx])-valmin(0.0,FxDS[IndexNS(i+1,j)])+valmax(0.0,FpDS[idx])-valmin(0.0,FpDS[IndexNS(i,j+1)]);
+                Pm[j+1] = valmax(0.0,FxDS[IndexNS(i+1,j)])-valmin(0.0,FxDS[idx])+valmax(0.0,FpDS[IndexNS(i,j+1)])-valmin(0.0,FpDS[idx]);
 
-                double wMax=std::max(w1ma,std::max(w2ma,std::max(w3ma,std::max(w4ma,w5ma))));
+                double w1ma = valmax(f[Index3(i,j,0)],f[idxij2]);
+                double w2ma = valmax(f[Index3(i+1,j,0)],f[Index3(i+1,j,2)]);
+                double w3ma = valmax(f[Index3(i-1,j,0)],f[Index3(i-1,j,2)]);
+                double w4ma = valmax(f[Index3(i,j+1,0)],f[Index3(i,j+1,2)]);
+                double w5ma = valmax(f[Index3(i,j-1,0)],f[Index3(i,j-1,2)]);
 
-                double w1mi=std::min(f[Index3(i,j,0)],f[idxij2]);
-                double w2mi=std::min(f[Index3(i+1,j,0)],f[Index3(i+1,j,2)]);
-                double w3mi=std::min(f[Index3(i-1,j,0)],f[Index3(i-1,j,2)]);
-                double w4mi=std::min(f[Index3(i,j+1,0)],f[Index3(i,j+1,2)]);
-                double w5mi=std::min(f[Index3(i,j-1,0)],f[Index3(i,j-1,2)]);
+                double wMax = valmax(w1ma,valmax(w2ma,valmax(w3ma,valmax(w4ma,w5ma))));
 
-                double wMin=std::min(w1mi,std::min(w2mi,std::min(w3mi,std::min(w4mi,w5mi))));
+                double w1mi = valmin(f[Index3(i,j,0)],f[idxij2]);
+                double w2mi = valmin(f[Index3(i+1,j,0)],f[Index3(i+1,j,2)]);
+                double w3mi = valmin(f[Index3(i-1,j,0)],f[Index3(i-1,j,2)]);
+                double w4mi = valmin(f[Index3(i,j+1,0)],f[Index3(i,j+1,2)]);
+                double w5mi = valmin(f[Index3(i,j-1,0)],f[Index3(i,j-1,2)]);
 
-                double Qm=-wMin+f[idxij2];
-                double Qp=wMax-f[idxij2];
+                double wMin = valmin(w1mi,valmin(w2mi,valmin(w3mi,valmin(w4mi,w5mi))));
 
-                Rp[idx]=Pp>0.0?std::min(1.0,Qp/Pp):0.0;
-                Rm[idx]=Pm>0.0?std::min(1.0,Qm/Pm):0.0;
+                Qm[j+1] = -wMin+f[idxij2];
+                Qp[j+1] = wMax-f[idxij2];
+            }
+#pragma ivdep
+            for (int j=0; j<np2; j++) {
+                int idx = IndexNS(i,j-1);
+
+                Rp[idx] = Pp[j] > 0.0 ? valmin(1.0,Qp[j]/Pp[j]) : 0.0;
+                Rm[idx] = Pm[j] > 0.0 ? valmin(1.0,Qm[j]/Pm[j]) : 0.0;
             }
         }
 
         std::fill(Cp.begin(), Cp.end(), 1.0);
         std::fill(Cx.begin(), Cx.end(), 1.0);
 
-        for (int i=1; i<n_x; i++) {
-            for (int j=0; j<n_p; j++) {
-                Cx[IndexNS(i,j)]=FxDS[IndexNS(i,j)]>0.0?std::min(Rp[IndexNS(i,j)],Rm[IndexNS(i-1,j)]):std::min(Rp[IndexNS(i-1,j)],Rm[IndexNS(i,j)]);
-            }
-        }
-
-        for (int i=0; i<n_x; i++) {
-            for (int j=1; j<n_p; j++) {
-                Cp[IndexNS(i,j)]=FpDS[IndexNS(i,j)]>0.0?std::min(Rp[IndexNS(i,j)],Rm[IndexNS(i,j-1)]):std::min(Rp[IndexNS(i,j-1)],Rm[IndexNS(i,j)]);
+#pragma omp parallel for schedule(guided)
+        for (int i=1; i<nx; i++) {
+#pragma ivdep
+            for (int j=0; j<np; j++) {
+                int idx = IndexNS(i,j);
+                int idxi = IndexNS(i-1,j);
+                int idxj = IndexNS(i,j-1);
+                Cx[idx]=FxDS[idx]>0.0?valmin(Rp[idx],Rm[idxi]):valmin(Rp[idxi],Rm[idx]);
+                Cp[idx]=FpDS[idx]>0.0?valmin(Rp[idx],Rm[idxj]):valmin(Rp[idxj],Rm[idx]);
             }
         }
     } else if (subStep==2) {
-        for (int i=0; i<n_x; i++) {
-            for (int j=0; j<n_p; j++) {
+#pragma omp parallel for collapse(2)
+        for (int i=0; i<nx; i++) {
+            //no vector
+            for (int j=0; j<np; j++) {
                 f[Index3(i,j,1)]=f[Index3(i,j,2)];
             }
         }
 
         for (int i=xm; i<xp; i++) {
             for (int j=pm; j<pp; j++) {
-
-                    f[Index3(i,j,1)]+=Cx[IndexNS(i,j)]*FxDS[IndexNS(i,j)];
-                    f[Index3(i-1,j,1)]-=Cx[IndexNS(i,j)]*FxDS[IndexNS(i,j)];
-                    f[Index3(i,j,1)]+=Cp[IndexNS(i,j)]*FpDS[IndexNS(i,j)];
-                    f[Index3(i,j-1,1)]-=Cp[IndexNS(i,j)]*FpDS[IndexNS(i,j)];
-
+                int idx = IndexNS(i,j);
+                f[Index3(i,j,1)]+=Cx[idx]*FxDS[idx];
+                f[Index3(i-1,j,1)]-=Cx[idx]*FxDS[idx];
+                f[Index3(i,j,1)]+=Cp[idx]*FpDS[idx];
+                f[Index3(i,j-1,1)]-=Cp[idx]*FpDS[idx];
             }
         }
 
     } else if (subStep==3) {
+#pragma omp parallel for collapse(2)
         for (int i=-2; i<nx2; i++) {
+            //no vector
             for (int j=-2; j<np2; j++) {
                 f[Index3(i,j,0)]=f[Index3(i,j,1)];
             }
@@ -1501,12 +1626,12 @@ void Rectangle::SetCFromDifferentLevel(int i, int j,Rectangle *rectangle,int t) 
 
     /* o is rectangle
 
-     0 x | o
-     1 o | x
-     2 o / x
-     3 x / o
+       0 x | o
+       1 o | x
+       2 o / x
+       3 x / o
 
-     */
+*/
 
     int i_caller=i-rectangle->x_pos;
     int j_caller=j-rectangle->p_pos;
@@ -1521,7 +1646,7 @@ void Rectangle::SetCFromDifferentLevel(int i, int j,Rectangle *rectangle,int t) 
             cx=std::min(cx,rectangle->FxDS[rectangle->IndexNS(i_caller,j_caller+k)]>0.0?rectangle->Rp[rectangle->IndexNS(i_caller,j_caller+k)]:rectangle->Rm[rectangle->IndexNS(i_caller,j_caller+k)]);
         }
 
-        cx=std::min(cx,FxDS[rectangle->IndexNS(i_coarse,j_coarse)]>0.0?Rm[IndexNS(i_coarse-1,j_coarse)]:Rp[IndexNS(i_coarse-1,j_coarse)]);
+        cx=std::min(cx,FxDS[IndexNS(i_coarse,j_coarse)]>0.0?Rm[IndexNS(i_coarse-1,j_coarse)]:Rp[IndexNS(i_coarse-1,j_coarse)]);
 
         for (int k=0; k<refinementRatio; k++) {
             rectangle->Cx[rectangle->IndexNS(i_caller,j_caller+k)]=cx;
@@ -1536,7 +1661,7 @@ void Rectangle::SetCFromDifferentLevel(int i, int j,Rectangle *rectangle,int t) 
             cx=std::min(cx,rectangle->FxDS[rectangle->IndexNS(i_caller,j_caller+k)]>0.0?rectangle->Rm[rectangle->IndexNS(i_caller-1,j_caller+k)]:rectangle->Rp[rectangle->IndexNS(i_caller-1,j_caller+k)]);
         }
 
-        cx=std::min(cx,FxDS[rectangle->IndexNS(i_coarse,j_coarse)]>0.0?Rp[IndexNS(i_coarse,j_coarse)]:Rm[IndexNS(i_coarse,j_coarse)]);
+        cx=std::min(cx,FxDS[IndexNS(i_coarse,j_coarse)]>0.0?Rp[IndexNS(i_coarse,j_coarse)]:Rm[IndexNS(i_coarse,j_coarse)]);
 
         for (int k=0; k<refinementRatio; k++) {
             rectangle->Cx[rectangle->IndexNS(i_caller,j_caller+k)]=cx;

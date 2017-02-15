@@ -29,6 +29,9 @@
 #define DPI 6.28318530718
 #define OUTW 80
 
+/* Set this to 1 to enable mkl optimisation of error calculation and initial conditions (0 otherwise) */
+#define MKLINIT 0
+
 class Rectangle;
 class Level;
 class Mesh;
@@ -39,21 +42,9 @@ class Settings;
 extern bool LOUD;
 extern bool NOISY;
 
-//Using this overloaded int allows us to use the >> and << overloads outside of std for coords and rect types (which would otherwise be illegal).
-struct oint {
-    int m;
-    oint() : m() {}
-    oint(int p) : m(p) {}
-    operator int() const { return m; }
-};
-
-typedef std::pair<oint, oint>            coords;
+typedef std::pair<int, int>            coords;
 typedef std::pair<coords, coords>        rect;
 typedef std::vector<rect>                level;
-typedef std::tuple<oint, oint, double>   rectData;
-
-std::ostream& operator<<(std::ostream& o, const coords& p);
-std::ostream& operator<<(std::ostream& o, const rect& r);
-std::ostream& operator<<(std::ostream& o, rectData& data);
+typedef std::tuple<int, int, double>   rectData;
 
 #endif /* __veritas_hpp__ */

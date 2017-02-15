@@ -5,7 +5,7 @@ class Level {
     std::vector<double> chargeL, currentL, energyL;
     int x_size, p_size, depth, particleType;
     Settings &settings;
-    EMFieldSolver *EMSolver;
+    std::shared_ptr<EMFieldSolver> EMSolver;
 public:
     std::vector<std::shared_ptr<Rectangle>> rectangles;
     Level(int particleType, int depth, Settings &settings);
@@ -15,7 +15,7 @@ public:
     void InterpolateRhoAndJToFinestMesh(std::vector<double> &charge, std::vector<double> &J);
     void InterpolateEnergyToFinestMesh(std::vector<double> &energy);
     void SetUpVlasovPoisson(int i, bool option = false);
-    void SetFieldSolver(EMFieldSolver *solver);
+    void SetFieldSolver(const std::shared_ptr<EMFieldSolver> &solver);
     void GetDataFromSameLevel(const std::unique_ptr<Level> &level);
     void GetDataFromCoarserLevel(const std::unique_ptr<Level> &level);
     void GetDataFromCoarseNewLevel(const std::unique_ptr<Level> &level);
