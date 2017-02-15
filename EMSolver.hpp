@@ -18,7 +18,6 @@ class EMFieldSolver {
     std::vector<std::shared_ptr<Mesh>> meshes;
     std::vector<std::unique_ptr<std::ofstream>> energyStreams;
     std::ofstream *chargeStream, *ELongStream, *ETransStream, *potentialStream, *BStream, *AsqStream, *timeStream;
-    std::ofstream *runtimeStream;
     std::vector<double> charge, J, By, Bz, Ey, Ez, Ay, Az, a_squared, neutralizationCharge;
     std::vector<std::vector<double>> charges, energies;
     double *PHI, *pM, fieldCoef, Ex0;
