@@ -52,3 +52,5 @@ License
 -------
 
 The project is licensed under the MIT license.
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FLibbum%2FVeritas.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FLibbum%2FVeritas?ref=badge_large)
