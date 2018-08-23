@@ -1,3 +1,5 @@
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FLibbum%2FVeritas.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FLibbum%2FVeritas?ref=badge_shield)
+
 <img src="http://veritas.readthedocs.io/en/latest/_images/veritas.svg" width=300px />
 
 **V**lasov **E**ule**RI**an **T**ool for **A**cceleration **S**tudies
@@ -52,3 +54,7 @@ License
 -------
 
 The project is licensed under the MIT license.
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FLibbum%2FVeritas.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FLibbum%2FVeritas?ref=badge_large)
